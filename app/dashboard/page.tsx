@@ -501,7 +501,7 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>('imei')
   const [services, setServices] = useState<ServicesData>({ imei: {}, server: {} })
   const [config, setConfig] = useState<WhatsAppSettings>({
-    provider: '', evolution_url: '', evolution_api_key: '', instance_name: '', default_group_jid: '',
+    service_url: '', phone: '', default_group_jid: '', admin_phones: '',
   })
   const [orders, setOrders] = useState<Order[]>([])
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
