@@ -1,8 +1,9 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface CustomField {
   fieldname: string
@@ -13,8 +14,6 @@ interface CustomField {
 interface Service {
   name: string
   group: string | null
-  info: string
-  time: string
   credit: number
   qnt?: number
   custom_fields: CustomField[]
@@ -26,11 +25,18 @@ interface ServicesData {
 }
 
 interface WhatsAppSettings {
-  provider: string
-  evolution_url: string
-  evolution_api_key: string
-  instance_name: string
+  service_url: string
+  phone: string
   default_group_jid: string
+  admin_phones: string
+}
+
+interface ServiceStatus {
+  name: string
+  online: boolean
+  ms?: number
+  error?: string
+  status_code?: number
 }
 
 interface Order {
@@ -40,21 +46,22 @@ interface Order {
   status: number
   status_label: string
   created_at: number
-  custom_fields?: Record<string, string>
 }
 
 // ─── Toast ───────────────────────────────────────────────────────────────────
 
 function Toast({ msg, type }: { msg: string; type: 'ok' | 'err' }) {
   return (
-    <div className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-lg shadow-2xl text-sm font-medium transition-all
-      ${type === 'ok' ? 'bg-green-700 text-white' : 'bg-red-700 text-white'}`}>
-      {type === 'ok' ? '✅' : '❌'} {msg}
+    <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl text-xs font-medium shadow-2xl border
+      ${type === 'ok'
+        ? 'bg-[#0f1a0f] border-[#1a3a1a] text-green-400'
+        : 'bg-[#1a0f0f] border-[#3a1a1a] text-red-400'}`}>
+      {msg}
     </div>
   )
 }
 
-// ─── Service Form Modal ───────────────────────────────────────────────────────
+// ─── Modal ───────────────────────────────────────────────────────────────────
 
 function ServiceModal({
   sid, service, onSave, onClose,
@@ -64,7 +71,7 @@ function ServiceModal({
   onSave: (sid: string, s: Service) => void
   onClose: () => void
 }) {
-  const blank: Service = { name: '', group: '', info: '', time: '1-24 Hours', credit: 0, custom_fields: [] }
+  const blank: Service = { name: '', group: '', credit: 0, custom_fields: [] }
   const [form, setForm] = useState<Service>(service ? { ...service } : blank)
   const [newId, setNewId] = useState(sid === '__new__' ? '' : sid)
 
@@ -93,80 +100,93 @@ function ServiceModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-40 p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 space-y-4">
-        <div className="flex justify-between items-center">
-          <h2 className="text-lg font-bold">{sid === '__new__' ? 'Nuevo Servicio' : `Editando #${sid}`}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-xl">✕</button>
-        </div>
-
-        {sid === '__new__' && (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4">
+      <div className="bg-[#111] border border-[#222] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto shadow-2xl">
+        {/* Header */}
+        <div className="flex justify-between items-center px-6 py-5 border-b border-[#1a1a1a]">
           <div>
-            <label className="text-xs text-gray-400 mb-1 block">ID del servicio (ej: 314)</label>
-            <input value={newId} onChange={e => setNewId(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm"
-              placeholder="314" />
+            <h2 className="text-sm font-semibold text-white">
+              {sid === '__new__' ? 'Nuevo servicio' : `Servicio #${sid}`}
+            </h2>
+            <p className="text-xs text-[#444] mt-0.5">
+              {sid === '__new__' ? 'Completa los datos del servicio' : 'Editar datos del servicio'}
+            </p>
           </div>
-        )}
-
-        <div>
-          <label className="text-xs text-gray-400 mb-1 block">Nombre</label>
-          <input value={form.name} onChange={e => setField('name', e.target.value)}
-            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm" />
+          <button onClick={onClose} className="text-[#444] hover:text-white transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#1a1a1a]">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          </button>
         </div>
 
-        <div>
-          <label className="text-xs text-gray-400 mb-1 block">Grupo WhatsApp destino</label>
-          <input value={form.group ?? ''} onChange={e => setField('group', e.target.value || null)}
-            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm"
-            placeholder="Nombre exacto del grupo" />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-gray-400 mb-1 block">Info / descripción</label>
-            <input value={form.info} onChange={e => setField('info', e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 mb-1 block">Tiempo estimado</label>
-            <input value={form.time} onChange={e => setField('time', e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm" />
-          </div>
-        </div>
-
-        <div>
-          <div className="flex justify-between items-center mb-2">
-            <label className="text-xs text-gray-400">Campos personalizados</label>
-            <button onClick={addCf} className="text-xs text-blue-400 hover:text-blue-300">+ Agregar campo</button>
-          </div>
-          {form.custom_fields.map((cf, i) => (
-            <div key={i} className="bg-gray-800 rounded-lg p-3 mb-2 space-y-2">
-              <div className="flex gap-2">
-                <input value={cf.fieldname} onChange={e => updateCf(i, 'fieldname', e.target.value)}
-                  placeholder="Nombre del campo (ej: IP)"
-                  className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-xs" />
-                <select value={cf.required} onChange={e => updateCf(i, 'required', Number(e.target.value))}
-                  className="bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-xs">
-                  <option value={1}>Requerido</option>
-                  <option value={0}>Opcional</option>
-                </select>
-                <button onClick={() => removeCf(i)} className="text-red-400 hover:text-red-300 text-xs px-1">✕</button>
-              </div>
-              <input value={cf.description} onChange={e => updateCf(i, 'description', e.target.value)}
-                placeholder="Descripción (ej: TeamViewer ID)"
-                className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-xs" />
+        <div className="px-6 py-5 space-y-4">
+          {sid === '__new__' && (
+            <div>
+              <label className="text-xs font-medium text-[#555] uppercase tracking-wider mb-2 block">ID del servicio</label>
+              <input value={newId} onChange={e => setNewId(e.target.value)}
+                className="w-full bg-[#0d0d0d] border border-[#222] rounded-xl px-4 py-2.5 text-white text-sm placeholder-[#333] focus:outline-none focus:border-[#333]"
+                placeholder="ej: 314" />
             </div>
-          ))}
+          )}
+
+          <div>
+            <label className="text-xs font-medium text-[#555] uppercase tracking-wider mb-2 block">Nombre</label>
+            <input value={form.name} onChange={e => setField('name', e.target.value)}
+              className="w-full bg-[#0d0d0d] border border-[#222] rounded-xl px-4 py-2.5 text-white text-sm placeholder-[#333] focus:outline-none focus:border-[#333]"
+              placeholder="Nombre del servicio" />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-[#555] uppercase tracking-wider mb-2 block">Grupo WhatsApp</label>
+            <input value={form.group ?? ''} onChange={e => setField('group', e.target.value || null)}
+              className="w-full bg-[#0d0d0d] border border-[#222] rounded-xl px-4 py-2.5 text-white text-sm placeholder-[#333] focus:outline-none focus:border-[#333]"
+              placeholder="Nombre exacto del grupo" />
+          </div>
+
+          {/* Custom fields */}
+          <div>
+            <div className="flex justify-between items-center mb-3">
+              <label className="text-xs font-medium text-[#555] uppercase tracking-wider">Campos del formulario</label>
+              <button onClick={addCf}
+                className="text-xs text-white bg-[#1a1a1a] hover:bg-[#222] border border-[#2a2a2a] px-3 py-1.5 rounded-lg transition-colors">
+                + Agregar campo
+              </button>
+            </div>
+            <div className="space-y-2">
+              {form.custom_fields.map((cf, i) => (
+                <div key={i} className="bg-[#0d0d0d] border border-[#1a1a1a] rounded-xl p-3 space-y-2">
+                  <div className="flex gap-2">
+                    <input value={cf.fieldname} onChange={e => updateCf(i, 'fieldname', e.target.value)}
+                      placeholder="Nombre del campo"
+                      className="flex-1 bg-[#111] border border-[#222] rounded-lg px-3 py-2 text-white text-xs placeholder-[#333] focus:outline-none" />
+                    <select value={cf.required} onChange={e => updateCf(i, 'required', Number(e.target.value))}
+                      className="bg-[#111] border border-[#222] rounded-lg px-2 py-2 text-white text-xs focus:outline-none">
+                      <option value={1}>Requerido</option>
+                      <option value={0}>Opcional</option>
+                    </select>
+                    <button onClick={() => removeCf(i)}
+                      className="text-[#444] hover:text-red-400 transition-colors px-2">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                    </button>
+                  </div>
+                  <input value={cf.description} onChange={e => updateCf(i, 'description', e.target.value)}
+                    placeholder="Descripcion para el usuario"
+                    className="w-full bg-[#111] border border-[#222] rounded-lg px-3 py-2 text-white text-xs placeholder-[#333] focus:outline-none" />
+                </div>
+              ))}
+              {form.custom_fields.length === 0 && (
+                <p className="text-xs text-[#333] py-2">Sin campos adicionales</p>
+              )}
+            </div>
+          </div>
         </div>
 
-        <div className="flex gap-3 pt-2">
+        {/* Footer */}
+        <div className="flex gap-2 px-6 py-5 border-t border-[#1a1a1a]">
           <button onClick={onClose}
-            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm">
+            className="flex-1 bg-[#111] hover:bg-[#1a1a1a] border border-[#222] text-[#888] hover:text-white py-2.5 rounded-xl text-sm transition-all">
             Cancelar
           </button>
           <button onClick={handleSave}
-            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg text-sm font-semibold">
+            className="flex-1 bg-white hover:bg-gray-100 text-black py-2.5 rounded-xl text-sm font-semibold transition-all">
             Guardar
           </button>
         </div>
@@ -188,7 +208,8 @@ function ServicesTab({
   const [filter, setFilter] = useState('')
 
   const filtered = Object.entries(services).filter(([sid, s]) =>
-    sid.includes(filter) || s.name.toLowerCase().includes(filter.toLowerCase()) ||
+    sid.includes(filter) ||
+    s.name.toLowerCase().includes(filter.toLowerCase()) ||
     (s.group ?? '').toLowerCase().includes(filter.toLowerCase())
   )
 
@@ -199,7 +220,7 @@ function ServicesTab({
   }
 
   async function handleDelete(sid: string) {
-    if (!confirm(`¿Eliminar servicio #${sid}?`)) return
+    if (!confirm(`Eliminar servicio #${sid}?`)) return
     const updated = { ...services }
     delete updated[sid]
     await onSave(updated)
@@ -208,76 +229,85 @@ function ServicesTab({
   return (
     <div>
       {editing && (
-        <ServiceModal
-          sid={editing.sid}
-          service={editing.svc}
-          onSave={handleSave}
-          onClose={() => setEditing(null)}
-        />
+        <ServiceModal sid={editing.sid} service={editing.svc} onSave={handleSave} onClose={() => setEditing(null)} />
       )}
 
-      <div className="flex gap-3 mb-4">
-        <input
-          value={filter}
-          onChange={e => setFilter(e.target.value)}
-          placeholder="Buscar por ID, nombre o grupo..."
-          className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm placeholder-gray-500"
-        />
+      <div className="flex gap-3 mb-5">
+        <div className="flex-1 relative">
+          <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#333]" width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.4"/>
+            <path d="M10 10l3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+          </svg>
+          <input
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            placeholder="Buscar por ID, nombre o grupo..."
+            className="w-full bg-[#111] border border-[#1e1e1e] rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-[#333] focus:outline-none focus:border-[#2a2a2a] transition-colors"
+          />
+        </div>
         <button
           onClick={() => setEditing({ sid: '__new__', svc: null })}
-          className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap"
+          className="bg-white hover:bg-gray-100 text-black text-sm font-semibold px-4 py-2.5 rounded-xl transition-all whitespace-nowrap"
         >
-          + Nuevo servicio
+          + Nuevo
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-800">
+      <div className="rounded-xl border border-[#1a1a1a] overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-800 text-gray-400 text-left">
-              <th className="px-4 py-3 font-medium w-16">ID</th>
-              <th className="px-4 py-3 font-medium">Nombre</th>
-              <th className="px-4 py-3 font-medium">Grupo WhatsApp</th>
-              <th className="px-4 py-3 font-medium w-16 text-center">Campos</th>
-              <th className="px-4 py-3 font-medium w-24"></th>
+            <tr className="bg-[#0f0f0f] border-b border-[#1a1a1a]">
+              <th className="px-5 py-3.5 text-left text-xs font-medium text-[#444] uppercase tracking-wider w-16">ID</th>
+              <th className="px-5 py-3.5 text-left text-xs font-medium text-[#444] uppercase tracking-wider">Nombre</th>
+              <th className="px-5 py-3.5 text-left text-xs font-medium text-[#444] uppercase tracking-wider">Grupo WhatsApp</th>
+              <th className="px-5 py-3.5 text-center text-xs font-medium text-[#444] uppercase tracking-wider w-20">Campos</th>
+              <th className="px-5 py-3.5 w-24"></th>
             </tr>
           </thead>
-          <tbody>
-            {filtered.sort(([a], [b]) => Number(a) - Number(b)).map(([sid, s]) => (
-              <tr key={sid} className="border-t border-gray-800 hover:bg-gray-800/50 transition-colors">
-                <td className="px-4 py-3 text-gray-400 font-mono font-bold">{sid}</td>
-                <td className="px-4 py-3 text-white">{s.name}</td>
-                <td className="px-4 py-3">
-                  {s.group
-                    ? <span className="bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded text-xs border border-blue-800">{s.group}</span>
-                    : <span className="text-gray-600 text-xs italic">sin grupo</span>}
-                </td>
-                <td className="px-4 py-3 text-center text-gray-400">{s.custom_fields.length}</td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      onClick={() => setEditing({ sid, svc: s })}
-                      className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 rounded hover:bg-blue-900/30"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => handleDelete(sid)}
-                      className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded hover:bg-red-900/30"
-                    >
-                      Eliminar
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+          <tbody className="divide-y divide-[#111]">
+            {filtered
+              .sort(([a], [b]) => Number(a) - Number(b))
+              .map(([sid, s]) => (
+                <tr key={sid} className="hover:bg-[#0f0f0f] transition-colors group">
+                  <td className="px-5 py-4 font-mono text-xs text-[#555] font-bold">{sid}</td>
+                  <td className="px-5 py-4 text-[#ccc] text-sm font-medium">{s.name}</td>
+                  <td className="px-5 py-4">
+                    {s.group
+                      ? <span className="text-xs text-[#888] bg-[#111] border border-[#1e1e1e] px-2.5 py-1 rounded-lg">{s.group}</span>
+                      : <span className="text-xs text-[#2a2a2a]">—</span>}
+                  </td>
+                  <td className="px-5 py-4 text-center text-xs text-[#444]">
+                    {s.custom_fields.length > 0 ? s.custom_fields.length : '—'}
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => setEditing({ sid, svc: s })}
+                        className="text-xs text-[#888] hover:text-white px-3 py-1.5 rounded-lg hover:bg-[#1a1a1a] transition-all"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => handleDelete(sid)}
+                        className="text-xs text-[#444] hover:text-red-400 px-2 py-1.5 rounded-lg hover:bg-[#1a1a1a] transition-all"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
+
         {filtered.length === 0 && (
-          <div className="text-center py-8 text-gray-500">No hay servicios</div>
+          <div className="text-center py-12 text-[#2a2a2a] text-sm">
+            {filter ? 'Sin resultados' : 'Sin servicios registrados'}
+          </div>
         )}
       </div>
-      <p className="text-xs text-gray-500 mt-2">{Object.keys(services).length} servicios totales</p>
+
+      <p className="text-xs text-[#2a2a2a] mt-3">{Object.keys(services).length} servicios</p>
     </div>
   )
 }
@@ -286,41 +316,127 @@ function ServicesTab({
 
 function ConfigTab({ config, onSave }: { config: WhatsAppSettings; onSave: (c: WhatsAppSettings) => Promise<void> }) {
   const [form, setForm] = useState<WhatsAppSettings>({ ...config })
-
   useEffect(() => { setForm({ ...config }) }, [config])
 
-  function set(k: keyof WhatsAppSettings, v: string) {
-    setForm(f => ({ ...f, [k]: v }))
-  }
+  const fields: [keyof WhatsAppSettings, string, string][] = [
+    ['service_url',      'URL del bot',          'http://whatsapp-bot:3001'],
+    ['phone',            'Numero de telefono',    '+16088955372'],
+    ['default_group_jid','Grupo JID por defecto', '120363...@g.us'],
+    ['admin_phones',     'Admins (separados por coma)', '51932504098,573001234567'],
+  ]
 
   return (
-    <div className="max-w-lg space-y-4">
-      <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">WhatsApp Settings</h3>
-
-      {([
-        ['provider', 'Provider', 'ej: evolution_api'],
-        ['evolution_url', 'Evolution URL', 'ej: http://evolution-api:8080'],
-        ['evolution_api_key', 'API Key Evolution', ''],
-        ['instance_name', 'Nombre de instancia', 'ej: leo-bot'],
-        ['default_group_jid', 'Grupo JID por defecto', '120363...@g.us'],
-      ] as [keyof WhatsAppSettings, string, string][]).map(([k, label, ph]) => (
-        <div key={k}>
-          <label className="text-xs text-gray-400 mb-1 block">{label}</label>
-          <input
-            value={form[k] ?? ''}
-            onChange={e => set(k, e.target.value)}
-            placeholder={ph}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
-          />
+    <div className="max-w-md">
+      <div className="bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
+        <div className="px-6 py-5 border-b border-[#1a1a1a]">
+          <h3 className="text-sm font-semibold text-white">WhatsApp</h3>
+          <p className="text-xs text-[#444] mt-0.5">Configuracion del cliente Selenium</p>
         </div>
-      ))}
+        <div className="px-6 py-5 space-y-4">
+          {fields.map(([k, label, ph]) => (
+            <div key={k}>
+              <label className="text-xs font-medium text-[#555] uppercase tracking-wider mb-2 block">{label}</label>
+              <input
+                value={form[k] ?? ''}
+                onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
+                placeholder={ph}
+                className="w-full bg-[#0d0d0d] border border-[#1e1e1e] rounded-xl px-4 py-2.5 text-white text-sm placeholder-[#2a2a2a] focus:outline-none focus:border-[#2e2e2e] transition-colors"
+              />
+            </div>
+          ))}
+        </div>
+        <div className="px-6 py-5 border-t border-[#1a1a1a]">
+          <button
+            onClick={() => onSave(form)}
+            className="bg-white hover:bg-gray-100 text-black text-sm font-semibold px-5 py-2.5 rounded-xl transition-all"
+          >
+            Guardar cambios
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
-      <button
-        onClick={() => onSave(form)}
-        className="bg-green-700 hover:bg-green-600 text-white px-6 py-2.5 rounded-lg text-sm font-semibold mt-2"
-      >
-        Guardar configuración
-      </button>
+// ─── Status Tab ──────────────────────────────────────────────────────────────
+
+function StatusTab() {
+  const [data, setData] = useState<Record<string, ServiceStatus> | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [lastCheck, setLastCheck] = useState<Date | null>(null)
+
+  async function check() {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/status')
+      setData(await res.json())
+      setLastCheck(new Date())
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { check() }, [])
+
+  return (
+    <div className="max-w-xl">
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h3 className="text-sm font-semibold text-white">Estado de servicios</h3>
+          {lastCheck && (
+            <p className="text-xs text-[#333] mt-0.5">
+              Ultima verificacion: {lastCheck.toLocaleTimeString('es-CO', { hour12: false })}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={check}
+          disabled={loading}
+          className="text-xs text-[#555] hover:text-[#888] border border-[#1a1a1a] hover:border-[#2a2a2a] px-3 py-2 rounded-lg transition-all disabled:opacity-40 flex items-center gap-1.5"
+        >
+          <svg className={loading ? 'animate-spin' : ''} width="11" height="11" viewBox="0 0 12 12" fill="none">
+            <path d="M10.5 6A4.5 4.5 0 1 1 6 1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            <path d="M10.5 1.5v3h-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Verificar
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {loading && !data ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-[#111] border border-[#1a1a1a] rounded-xl px-5 py-4 animate-pulse">
+              <div className="h-3 bg-[#1a1a1a] rounded w-32" />
+            </div>
+          ))
+        ) : data && Object.values(data).map((svc) => (
+          <div
+            key={svc.name}
+            className={`border rounded-xl px-5 py-4 flex items-center justify-between transition-colors
+              ${svc.online ? 'bg-[#0a110a] border-[#1a2e1a]' : 'bg-[#110a0a] border-[#2e1a1a]'}`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-2 h-2 rounded-full shrink-0 ${svc.online ? 'bg-green-500' : 'bg-red-500'}`}
+                style={svc.online ? { boxShadow: '0 0 6px #22c55e' } : { boxShadow: '0 0 6px #ef4444' }}
+              />
+              <div>
+                <p className="text-sm font-medium text-[#ccc]">{svc.name}</p>
+                {!svc.online && svc.error && (
+                  <p className="text-xs text-[#444] mt-0.5 font-mono">{svc.error}</p>
+                )}
+              </div>
+            </div>
+            <div className="text-right">
+              <span className={`text-xs font-semibold ${svc.online ? 'text-green-500' : 'text-red-400'}`}>
+                {svc.online ? 'Online' : 'Offline'}
+              </span>
+              {svc.online && svc.ms !== undefined && (
+                <p className="text-xs text-[#333] font-mono mt-0.5">{svc.ms}ms</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -328,55 +444,57 @@ function ConfigTab({ config, onSave }: { config: WhatsAppSettings; onSave: (c: W
 // ─── Orders Tab ───────────────────────────────────────────────────────────────
 
 function OrdersTab({ orders }: { orders: Order[] }) {
-  const statusColor: Record<number, string> = {
-    2: 'bg-yellow-900/40 text-yellow-300 border-yellow-800',
-    3: 'bg-red-900/40 text-red-300 border-red-800',
-    4: 'bg-green-900/40 text-green-300 border-green-800',
+  const badge: Record<number, string> = {
+    2: 'text-yellow-500 bg-yellow-500/8 border-yellow-500/20',
+    3: 'text-red-400 bg-red-500/8 border-red-500/20',
+    4: 'text-green-400 bg-green-500/8 border-green-500/20',
   }
 
   return (
     <div>
-      <div className="overflow-x-auto rounded-lg border border-gray-800">
+      <div className="rounded-xl border border-[#1a1a1a] overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-800 text-gray-400 text-left">
-              <th className="px-4 py-3 font-medium">Ref ID</th>
-              <th className="px-4 py-3 font-medium">Servicio</th>
-              <th className="px-4 py-3 font-medium">IMEI</th>
-              <th className="px-4 py-3 font-medium">Estado</th>
-              <th className="px-4 py-3 font-medium">Hora</th>
+            <tr className="bg-[#0f0f0f] border-b border-[#1a1a1a]">
+              <th className="px-5 py-3.5 text-left text-xs font-medium text-[#444] uppercase tracking-wider">Ref</th>
+              <th className="px-5 py-3.5 text-left text-xs font-medium text-[#444] uppercase tracking-wider">Servicio</th>
+              <th className="px-5 py-3.5 text-left text-xs font-medium text-[#444] uppercase tracking-wider">IMEI</th>
+              <th className="px-5 py-3.5 text-left text-xs font-medium text-[#444] uppercase tracking-wider">Estado</th>
+              <th className="px-5 py-3.5 text-left text-xs font-medium text-[#444] uppercase tracking-wider">Hora</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-[#0f0f0f]">
             {orders.map(o => (
-              <tr key={o.id} className="border-t border-gray-800 hover:bg-gray-800/50">
-                <td className="px-4 py-3 font-mono text-gray-400 text-xs">{o.id}</td>
-                <td className="px-4 py-3 text-white">{o.service ?? '—'}</td>
-                <td className="px-4 py-3 font-mono text-xs text-gray-300">{o.imei ?? '—'}</td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-0.5 rounded text-xs border ${statusColor[o.status] ?? 'bg-gray-700 text-gray-300 border-gray-600'}`}>
+              <tr key={o.id} className="hover:bg-[#0f0f0f] transition-colors">
+                <td className="px-5 py-4 font-mono text-xs text-[#444]">{o.id}</td>
+                <td className="px-5 py-4 text-[#ccc] text-sm">{o.service ?? '—'}</td>
+                <td className="px-5 py-4 font-mono text-xs text-[#666]">{o.imei ?? '—'}</td>
+                <td className="px-5 py-4">
+                  <span className={`text-xs px-2.5 py-1 rounded-lg border font-medium ${badge[o.status] ?? 'text-[#444] bg-[#111] border-[#1a1a1a]'}`}>
                     {o.status_label}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-gray-400 text-xs">
-                  {o.created_at ? new Date(o.created_at * 1000).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '—'}
+                <td className="px-5 py-4 text-xs text-[#444]">
+                  {o.created_at
+                    ? new Date(o.created_at * 1000).toLocaleString('es-CO', { timeZone: 'America/Bogota', hour12: false })
+                    : '—'}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
         {orders.length === 0 && (
-          <div className="text-center py-8 text-gray-500">No hay pedidos registrados</div>
+          <div className="text-center py-12 text-[#2a2a2a] text-sm">Sin pedidos registrados</div>
         )}
       </div>
-      <p className="text-xs text-gray-500 mt-2">{orders.length} pedidos más recientes</p>
+      <p className="text-xs text-[#2a2a2a] mt-3">{orders.length} pedidos recientes</p>
     </div>
   )
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-type Tab = 'imei' | 'server' | 'config' | 'orders'
+type Tab = 'imei' | 'server' | 'config' | 'status' | 'orders'
 
 export default function Dashboard() {
   const router = useRouter()
@@ -402,10 +520,7 @@ export default function Dashboard() {
         fetch('/api/config'),
         fetch('/api/orders'),
       ])
-      if (sRes.status === 401 || cRes.status === 401) {
-        router.push('/')
-        return
-      }
+      if (sRes.status === 401 || cRes.status === 401) { router.push('/'); return }
       const [s, c, o] = await Promise.all([sRes.json(), cRes.json(), oRes.json()])
       setServices(s)
       setConfig(c?.whatsapp_settings ?? c)
@@ -427,15 +542,9 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (res.ok) {
-        setServices(body)
-        showToast('Servicios guardados', 'ok')
-      } else {
-        showToast('Error al guardar', 'err')
-      }
-    } catch {
-      showToast('Error de conexión', 'err')
-    }
+      if (res.ok) { setServices(body); showToast('Cambios guardados', 'ok') }
+      else showToast('Error al guardar', 'err')
+    } catch { showToast('Error de conexion', 'err') }
   }
 
   async function saveConfig(ws: WhatsAppSettings) {
@@ -446,47 +555,41 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (res.ok) {
-        setConfig(ws)
-        showToast('Configuración guardada', 'ok')
-      } else {
-        showToast('Error al guardar', 'err')
-      }
-    } catch {
-      showToast('Error de conexión', 'err')
-    }
+      if (res.ok) { setConfig(ws); showToast('Configuracion guardada', 'ok') }
+      else showToast('Error al guardar', 'err')
+    } catch { showToast('Error de conexion', 'err') }
   }
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: 'imei',   label: 'IMEI Services',   count: Object.keys(services.imei).length },
-    { id: 'server', label: 'Server Services',  count: Object.keys(services.server).length },
-    { id: 'config', label: 'WhatsApp Config' },
-    { id: 'orders', label: 'Pedidos',          count: orders.length },
+    { id: 'imei',   label: 'IMEI',    count: Object.keys(services.imei).length },
+    { id: 'server', label: 'Server',  count: Object.keys(services.server).length },
+    { id: 'config', label: 'WhatsApp' },
+    { id: 'status', label: 'Servidores' },
+    { id: 'orders', label: 'Pedidos', count: orders.length },
   ]
 
   return (
-    <div className="min-h-screen bg-gray-950">
+    <div className="min-h-screen bg-[#080808] flex flex-col">
       {toast && <Toast msg={toast.msg} type={toast.type} />}
 
       {/* Header */}
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">📱</span>
-          <div>
-            <h1 className="font-bold text-white leading-none">LeoPe-Gsm Panel</h1>
-            <p className="text-xs text-gray-500 mt-0.5">Gestión de servicios</p>
-          </div>
+      <header className="bg-[#0a0a0a] border-b border-[#141414] px-6 py-4 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-4">
+          <Image src="/logo.png" alt="LeoPe-Gsm" width={100} height={36} className="object-contain" />
+          <div className="w-px h-5 bg-[#1a1a1a]" />
+          <span className="text-xs text-[#333] font-medium tracking-wider uppercase">Powered by Torocell</span>
         </div>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-2">
           <button
             onClick={loadAll}
-            className="text-sm text-gray-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors"
+            className="text-xs text-[#444] hover:text-[#888] px-3 py-2 rounded-lg hover:bg-[#111] transition-all flex items-center gap-1.5"
           >
-            ↻ Recargar
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10.5 6A4.5 4.5 0 1 1 6 1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M10.5 1.5v3h-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Actualizar
           </button>
           <button
             onClick={() => { localStorage.removeItem('panel_key'); router.push('/') }}
-            className="text-sm text-gray-400 hover:text-red-400 px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors"
+            className="text-xs text-[#333] hover:text-[#888] px-3 py-2 rounded-lg hover:bg-[#111] transition-all"
           >
             Salir
           </button>
@@ -494,21 +597,21 @@ export default function Dashboard() {
       </header>
 
       {/* Tabs */}
-      <div className="border-b border-gray-800 px-6">
-        <div className="flex gap-1">
+      <div className="border-b border-[#111] px-6 shrink-0">
+        <div className="flex">
           {tabs.map(t => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2
+              className={`px-4 py-3.5 text-sm font-medium border-b-2 transition-all flex items-center gap-2 -mb-px
                 ${tab === t.id
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-gray-400 hover:text-gray-200'}`}
+                  ? 'border-white text-white'
+                  : 'border-transparent text-[#444] hover:text-[#777]'}`}
             >
               {t.label}
               {t.count !== undefined && (
-                <span className={`text-xs px-1.5 py-0.5 rounded-full
-                  ${tab === t.id ? 'bg-blue-900 text-blue-300' : 'bg-gray-800 text-gray-400'}`}>
+                <span className={`text-xs px-1.5 py-0.5 rounded-md font-mono
+                  ${tab === t.id ? 'text-[#888] bg-[#1a1a1a]' : 'text-[#333] bg-[#111]'}`}>
                   {t.count}
                 </span>
               )}
@@ -518,36 +621,21 @@ export default function Dashboard() {
       </div>
 
       {/* Content */}
-      <main className="p-6">
+      <main className="flex-1 p-6 overflow-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-64 text-gray-500">
-            <div className="text-center">
-              <div className="text-4xl mb-3 animate-pulse">⚙️</div>
-              <p>Cargando...</p>
+          <div className="flex items-center justify-center h-64">
+            <div className="flex items-center gap-3 text-[#333]">
+              <div className="w-4 h-4 border border-[#333] border-t-[#666] rounded-full animate-spin" />
+              <span className="text-sm">Cargando...</span>
             </div>
           </div>
         ) : (
           <>
-            {tab === 'imei' && (
-              <ServicesTab
-                type="imei"
-                services={services.imei}
-                onSave={updated => saveServices('imei', updated)}
-              />
-            )}
-            {tab === 'server' && (
-              <ServicesTab
-                type="server"
-                services={services.server}
-                onSave={updated => saveServices('server', updated)}
-              />
-            )}
-            {tab === 'config' && (
-              <ConfigTab config={config} onSave={saveConfig} />
-            )}
-            {tab === 'orders' && (
-              <OrdersTab orders={orders} />
-            )}
+            {tab === 'imei'   && <ServicesTab type="imei"   services={services.imei}   onSave={u => saveServices('imei', u)} />}
+            {tab === 'server' && <ServicesTab type="server" services={services.server} onSave={u => saveServices('server', u)} />}
+            {tab === 'config' && <ConfigTab config={config} onSave={saveConfig} />}
+            {tab === 'status' && <StatusTab />}
+            {tab === 'orders' && <OrdersTab orders={orders} />}
           </>
         )}
       </main>

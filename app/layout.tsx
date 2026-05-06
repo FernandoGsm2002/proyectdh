@@ -3,13 +3,13 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'LeoPe-Gsm Panel',
-  description: 'Panel de administración LeoPe-Gsm',
+  description: 'Panel de administracion LeoPe-Gsm',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
-      <body className="bg-gray-950 text-gray-100 min-h-screen">{children}</body>
+      <body className="bg-[#080808] text-gray-100 min-h-screen">{children}</body>
     </html>
   )
 }
