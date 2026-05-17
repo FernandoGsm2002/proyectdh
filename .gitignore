@@ -1,0 +1,29 @@
+# ─── Backend (corre en Docker local, NUNCA va a GitHub) ───────────────────────
+dhru-api/
+dhru-bridge/
+dft-runner/
+panel-api/
+whatsapp-bot/
+docker-compose.yml
+main.py
+
+# ─── Secrets & credenciales ───────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.json
+!panel-web/tsconfig.json
+!panel-web/package.json
+!panel-web/next.config.js
+!panel-web/tailwind.config.js
+!panel-web/postcss.config.js
+
+# ─── Cloudflare tunnel (credenciales privadas) ────────────────────────────────
+.cloudflared/
+
+# ─── OS / IDE ─────────────────────────────────────────────────────────────────
+.DS_Store
+*.log
+node_modules/
+.next/
