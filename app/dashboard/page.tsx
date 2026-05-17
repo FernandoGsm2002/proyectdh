@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 
@@ -492,9 +492,267 @@ function OrdersTab({ orders }: { orders: Order[] }) {
   )
 }
 
+// ─── DFT Tab ──────────────────────────────────────────────────────────────────
+
+type DftJobStatus = 'idle' | 'previewing' | 'ready' | 'running' | 'done' | 'error'
+
+interface DftCuenta { username: string; email: string }
+interface DftDetail { username: string; status: 'ok' | 'warning' | 'error'; msg?: string }
+interface DftJob {
+  id: string
+  status: string
+  total: number
+  started_at: string
+  finished_at: string | null
+  result: { ok: number; err: number; detalles: DftDetail[] } | null
+}
+
+function DftTab() {
+  const [texto, setTexto] = useState('')
+  const [phase, setPhase] = useState<DftJobStatus>('idle')
+  const [preview, setPreview] = useState<DftCuenta[]>([])
+  const [job, setJob] = useState<DftJob | null>(null)
+  const [errMsg, setErrMsg] = useState('')
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  function stopPoll() {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+  }
+
+  async function handlePreview() {
+    if (!texto.trim()) return
+    setPhase('previewing')
+    setErrMsg('')
+    try {
+      const res = await fetch('/api/dft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'preview', texto }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? data.detail ?? 'Error desconocido')
+      setPreview(data.cuentas ?? [])
+      setPhase('ready')
+    } catch (e: unknown) {
+      setErrMsg(e instanceof Error ? e.message : 'Error')
+      setPhase('error')
+    }
+  }
+
+  async function handleRun() {
+    setPhase('running')
+    setErrMsg('')
+    setJob(null)
+    try {
+      const res = await fetch('/api/dft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'run', texto }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? data.detail ?? 'Error desconocido')
+      const jobId = data.job_id
+      // Poll every 5s
+      pollRef.current = setInterval(async () => {
+        try {
+          const r = await fetch(`/api/dft/job/${jobId}`, { cache: 'no-store' })
+          const j: DftJob = await r.json()
+          setJob(j)
+          if (j.status === 'done' || j.status === 'error') {
+            stopPoll()
+            setPhase(j.status === 'done' ? 'done' : 'error')
+          }
+        } catch { /* keep polling */ }
+      }, 5000)
+    } catch (e: unknown) {
+      setErrMsg(e instanceof Error ? e.message : 'Error')
+      setPhase('error')
+    }
+  }
+
+  function reset() {
+    stopPoll()
+    setTexto('')
+    setPreview([])
+    setJob(null)
+    setErrMsg('')
+    setPhase('idle')
+  }
+
+  const statusIcon: Record<string, string> = { ok: '✅', warning: '⚠️', error: '❌' }
+
+  return (
+    <div className="max-w-2xl space-y-5">
+
+      {/* Header */}
+      <div>
+        <h3 className="text-sm font-semibold text-white">DFTPro — Cambio de contraseñas</h3>
+        <p className="text-xs text-[#444] mt-0.5">Pega el texto con las cuentas en formato DFTPro. El parser detectará username y email automáticamente.</p>
+      </div>
+
+      {/* Textarea — solo visible en idle/ready */}
+      {(phase === 'idle' || phase === 'ready' || phase === 'previewing') && (
+        <div>
+          <label className="text-xs font-medium text-[#555] uppercase tracking-wider mb-2 block">Texto de cuentas</label>
+          <textarea
+            id="dft-texto"
+            value={texto}
+            onChange={e => { setTexto(e.target.value); if (phase === 'ready') setPhase('idle') }}
+            placeholder={`DFT\nusername=>MiUser password=>1234\nemail=>user@mail.com\n\nDFT\nusername=>OtroUser ...`}
+            rows={10}
+            className="w-full bg-[#0d0d0d] border border-[#1e1e1e] rounded-xl px-4 py-3 text-white text-xs font-mono placeholder-[#2a2a2a] focus:outline-none focus:border-[#2e2e2e] transition-colors resize-y"
+          />
+          <p className="text-xs text-[#2a2a2a] mt-1.5">El texto puede incluir passwords, fechas y emojis — solo se extraen username y email.</p>
+        </div>
+      )}
+
+      {/* Preview list */}
+      {phase === 'ready' && preview.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-medium text-[#555] uppercase tracking-wider">
+              {preview.length} cuenta{preview.length !== 1 ? 's' : ''} detectadas
+            </p>
+            <span className="text-xs text-green-500 bg-green-500/10 border border-green-500/20 px-2.5 py-1 rounded-lg">Listo para ejecutar</span>
+          </div>
+          <div className="bg-[#0d0d0d] border border-[#1a1a1a] rounded-xl overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-[#0f0f0f] border-b border-[#1a1a1a]">
+                  <th className="px-4 py-2.5 text-left text-[#444] font-medium">#</th>
+                  <th className="px-4 py-2.5 text-left text-[#444] font-medium">Username</th>
+                  <th className="px-4 py-2.5 text-left text-[#444] font-medium">Email</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#111]">
+                {preview.map((c, i) => (
+                  <tr key={i} className="hover:bg-[#111] transition-colors">
+                    <td className="px-4 py-2.5 text-[#333] font-mono">{i + 1}</td>
+                    <td className="px-4 py-2.5 text-[#ccc] font-mono">{c.username}</td>
+                    <td className="px-4 py-2.5 text-[#666] font-mono">{c.email}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Job progress */}
+      {(phase === 'running' || phase === 'done') && (
+        <div className="bg-[#0d0d0d] border border-[#1a1a1a] rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#1a1a1a] flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              {phase === 'running' && (
+                <div className="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse" style={{ boxShadow: '0 0 8px #eab308' }} />
+              )}
+              {phase === 'done' && (
+                <div className="w-2.5 h-2.5 rounded-full bg-green-500" style={{ boxShadow: '0 0 8px #22c55e' }} />
+              )}
+              <span className="text-sm font-medium text-white">
+                {phase === 'running' ? 'Procesando...' : 'Completado'}
+              </span>
+            </div>
+            {job && (
+              <span className="text-xs text-[#444] font-mono">job: {job.id}</span>
+            )}
+          </div>
+
+          {phase === 'running' && !job && (
+            <div className="px-5 py-8 text-center">
+              <div className="w-5 h-5 border border-[#333] border-t-[#666] rounded-full animate-spin mx-auto mb-3" />
+              <p className="text-xs text-[#444]">Esperando confirmación del servidor...</p>
+            </div>
+          )}
+
+          {job?.result && (
+            <div className="px-5 py-4 space-y-4">
+              {/* Summary */}
+              <div className="flex gap-3">
+                <div className="flex-1 bg-green-500/5 border border-green-500/15 rounded-xl px-4 py-3 text-center">
+                  <p className="text-2xl font-bold text-green-400">{job.result.ok}</p>
+                  <p className="text-xs text-[#444] mt-0.5">Exitosas</p>
+                </div>
+                <div className="flex-1 bg-red-500/5 border border-red-500/15 rounded-xl px-4 py-3 text-center">
+                  <p className="text-2xl font-bold text-red-400">{job.result.err}</p>
+                  <p className="text-xs text-[#444] mt-0.5">Errores</p>
+                </div>
+              </div>
+              {/* Detail rows */}
+              {job.result.detalles.length > 0 && (
+                <div className="space-y-1">
+                  {job.result.detalles.map((d, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs px-3 py-2 rounded-lg bg-[#111]">
+                      <span className="font-mono text-[#888]">{d.username}</span>
+                      <span>{statusIcon[d.status] ?? '?'} {d.msg ? <span className="text-[#444]">{d.msg.slice(0, 60)}</span> : null}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Error */}
+      {phase === 'error' && errMsg && (
+        <div className="bg-red-500/5 border border-red-500/20 rounded-xl px-5 py-4">
+          <p className="text-xs text-red-400">{errMsg}</p>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex gap-2">
+        {phase === 'idle' && (
+          <button
+            id="dft-preview-btn"
+            onClick={handlePreview}
+            disabled={!texto.trim()}
+            className="bg-white hover:bg-gray-100 text-black text-sm font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            Verificar cuentas
+          </button>
+        )}
+        {phase === 'ready' && (
+          <>
+            <button
+              id="dft-run-btn"
+              onClick={handleRun}
+              className="bg-white hover:bg-gray-100 text-black text-sm font-semibold px-5 py-2.5 rounded-xl transition-all"
+            >
+              Ejecutar ({preview.length})
+            </button>
+            <button
+              onClick={() => setPhase('idle')}
+              className="text-sm text-[#555] hover:text-[#888] border border-[#1a1a1a] hover:border-[#2a2a2a] px-4 py-2.5 rounded-xl transition-all"
+            >
+              Editar texto
+            </button>
+          </>
+        )}
+        {phase === 'running' && (
+          <button disabled className="text-sm text-[#444] border border-[#1a1a1a] px-5 py-2.5 rounded-xl opacity-50 cursor-not-allowed flex items-center gap-2">
+            <div className="w-3 h-3 border border-[#444] border-t-[#888] rounded-full animate-spin" />
+            Ejecutando...
+          </button>
+        )}
+        {(phase === 'done' || phase === 'error') && (
+          <button
+            id="dft-reset-btn"
+            onClick={reset}
+            className="bg-white hover:bg-gray-100 text-black text-sm font-semibold px-5 py-2.5 rounded-xl transition-all"
+          >
+            Nueva ejecución
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-type Tab = 'imei' | 'server' | 'config' | 'status' | 'orders'
+type Tab = 'imei' | 'server' | 'config' | 'status' | 'orders' | 'dft'
 
 export default function Dashboard() {
   const router = useRouter()
@@ -566,6 +824,7 @@ export default function Dashboard() {
     { id: 'config', label: 'WhatsApp' },
     { id: 'status', label: 'Servidores' },
     { id: 'orders', label: 'Pedidos', count: orders.length },
+    { id: 'dft',    label: 'DFT Pro' },
   ]
 
   return (
@@ -636,6 +895,7 @@ export default function Dashboard() {
             {tab === 'config' && <ConfigTab config={config} onSave={saveConfig} />}
             {tab === 'status' && <StatusTab />}
             {tab === 'orders' && <OrdersTab orders={orders} />}
+            {tab === 'dft'    && <DftTab />}
           </>
         )}
       </main>
