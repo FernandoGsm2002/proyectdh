@@ -504,7 +504,7 @@ interface DftJob {
   total: number
   started_at: string
   finished_at: string | null
-  result: { ok: number; err: number; detalles: DftDetail[] } | null
+  result: { ok: number; warning?: number; err: number; detalles: DftDetail[] } | null
 }
 
 function DftTab() {
@@ -671,7 +671,11 @@ function DftTab() {
               <div className="flex gap-3">
                 <div className="flex-1 bg-green-500/5 border border-green-500/15 rounded-xl px-4 py-3 text-center">
                   <p className="text-2xl font-bold text-green-400">{job.result.ok}</p>
-                  <p className="text-xs text-[#444] mt-0.5">Exitosas</p>
+                  <p className="text-xs text-[#444] mt-0.5">Confirmadas</p>
+                </div>
+                <div className="flex-1 bg-yellow-500/5 border border-yellow-500/15 rounded-xl px-4 py-3 text-center">
+                  <p className="text-2xl font-bold text-yellow-400">{job.result.warning ?? job.result.detalles.filter(d => d.status === 'warning').length}</p>
+                  <p className="text-xs text-[#444] mt-0.5">Sin verificar</p>
                 </div>
                 <div className="flex-1 bg-red-500/5 border border-red-500/15 rounded-xl px-4 py-3 text-center">
                   <p className="text-2xl font-bold text-red-400">{job.result.err}</p>
