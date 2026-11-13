@@ -69,13 +69,8 @@ def fill_form(username: str, email: str, submission: dict):
         page.on("request", site_request)
         page.on("response", site_response)
 
-        page.click(SEL_USER)
-        page.keyboard.press("Control+A")
-        page.type(SEL_USER, username, delay=50)
-
-        page.click(SEL_EMAIL)
-        page.keyboard.press("Control+A")
-        page.type(SEL_EMAIL, email, delay=50)
+        page.fill(SEL_USER, username, timeout=15000)
+        page.fill(SEL_EMAIL, email, timeout=15000)
 
         val_user  = page.input_value(SEL_USER)
         val_email = page.input_value(SEL_EMAIL)
@@ -149,6 +144,12 @@ def run_cuentas(texto: str) -> dict:
             )
 
             requests = submission["requests"]
+            # Scrapling registra algunas excepciones de page_action y aun así
+            # devuelve la página. Sin esta comprobación parecían ejecuciones válidas.
+            if "before_click" not in submission:
+                raise RuntimeError("No se completó el llenado del formulario; no hubo POST")
+            if "after_click" not in submission and not requests:
+                raise RuntimeError("El clic no terminó y no se observó el POST")
             trace = ", ".join(f"{r['method']} {r['path']} -> {r['status'] or 'sin respuesta'}" for r in requests)
             print(f"formulario antes: {submission.get('before_click')}; después: {submission.get('after_click')}; solicitudes: {trace or 'ninguna'}")
             # Un POST con HTTP 200 confirma recepción HTTP, no entrega del correo.
