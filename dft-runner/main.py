@@ -23,6 +23,7 @@ URL        = "https://dftpro.com/user/forget_password"
 SEL_USER   = 'input[name="username"]'
 SEL_EMAIL  = 'input[name="email"]'
 SEL_BUTTON = 'button[type="submit"]'
+INTERVALO_SOLICITUDES_SEGUNDOS = 120
 
 # ─────────────────────────────────────────────
 # PARSER — busca username y email en texto libre
@@ -168,7 +169,8 @@ def run_cuentas(texto: str) -> dict:
             detalles.append({"username": cuenta["username"], "status": "error", "msg": str(e)})
 
         if i < len(cuentas):
-            time.sleep(2)
+            print(f"  Esperando {INTERVALO_SOLICITUDES_SEGUNDOS} segundos antes de la siguiente cuenta...", flush=True)
+            time.sleep(INTERVALO_SOLICITUDES_SEGUNDOS)
 
     print(f"\n{'=' * 50}")
     print(f"  ✅ Confirmadas : {ok}   ⚠️ Sin verificar : {warning}   ❌ Errores : {err}")
